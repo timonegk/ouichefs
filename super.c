@@ -82,8 +82,10 @@ static int ouichefs_write_inode(struct inode *inode,
 		bh2 = sb_bread(sb, new_index_no);
 		new_index = (struct ouichefs_file_index_block *)bh2->b_data;
 		pr_info("inode no: %u\n", ci->index_block);
-		//memcpy(new_index, index, sizeof(*new_index));
-		list_add(&new_index->list, &index->list);
+		memcpy(new_index, index, sizeof(*new_index));
+		new_index->own_block_number = new_index_no;
+		new_index->next_block_number = index->next_block_number;
+		index->next_block_number = new_index_no;
 		ci->index_block = new_index_no;
 		mark_buffer_dirty(bh);
 		mark_buffer_dirty(bh2);

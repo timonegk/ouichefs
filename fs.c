@@ -10,8 +10,105 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/fs.h>
+#include <linux/debugfs.h>
+#include <linux/seq_file.h>
+#include <linux/buffer_head.h>
 
 #include "ouichefs.h"
+
+static int debug_seq_show(struct seq_file *file, void *v)
+{
+	int ino;
+	struct super_block *sb = (struct super_block *)file->private;
+	struct ouichefs_sb_info *sbi = OUICHEFS_SB(sb);
+	struct inode *inode;
+	struct ouichefs_inode *cinode;
+	uint32_t inode_block, inode_shift;
+	uint32_t first_block_number, current_block_number;
+	struct buffer_head *bh;
+	int count;
+	struct ouichefs_file_index_block *file_index;
+	char c[100];
+
+	//c = kmalloc(sizeof(char) * 100, GFP_KERNEL);
+
+
+	for (ino = 0; ino < sbi->nr_inodes; ino++) {
+		inode_block = (ino / OUICHEFS_INODES_PER_BLOCK) + 1;
+		inode_shift = ino % OUICHEFS_INODES_PER_BLOCK;
+		bh = sb_bread(sb, inode_block);
+		if (!bh) {
+			continue;
+		}
+		cinode = (struct ouichefs_inode *)bh->b_data;
+		cinode += inode_shift;
+		if (!cinode)
+			continue;
+
+		if (cinode->i_nlink == 0)
+			continue;
+
+		if (S_ISREG(cinode->i_mode)) {
+			count = 0;
+
+			memset(c, 0, sizeof(c));
+
+			bh = sb_bread(sb, cinode->index_block);
+			if (!bh)
+				continue;
+
+			file_index = (struct ouichefs_file_index_block *)bh->b_data;
+			first_block_number = file_index->own_block_number;
+			current_block_number = first_block_number;
+
+			do {
+				count++;
+				snprintf(c, 100, "%s, %d", c, current_block_number);
+
+				bh = sb_bread(sb, current_block_number);
+				if (!bh)
+					continue;
+
+				file_index = (struct ouichefs_file_index_block *)bh->b_data;
+				current_block_number = file_index->next_block_number;
+
+			} while (current_block_number != first_block_number);
+
+			seq_printf(file, "%d %d [%s]\n", ino, count, c + 2);
+		}
+	}
+	return 0;
+}
+
+
+static int debugfs_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, debug_seq_show, inode->i_private);
+}
+
+static const struct file_operations debug_fops = {
+	.owner = THIS_MODULE,
+	.open = debugfs_open,
+	.read = seq_read,
+	.release = single_release,
+};
+
+
+int ouichefs_debug_file(struct super_block *sb)
+{
+	struct dentry *debugfs_file;
+	struct ouichefs_sb_info *sbi = OUICHEFS_SB(sb);
+
+	debugfs_file = debugfs_create_file(sb->s_id, 0400, NULL,
+                        NULL, &debug_fops);
+	debugfs_file->d_inode->i_private = sb;
+	if (!debugfs_file) {
+		pr_err("Debugfs file creation failed\n");
+		return -EIO;
+	}
+	sbi->debug_file = debugfs_file;
+	return 0;
+}
 
 /*
  * Mount a ouiche_fs partition
@@ -28,6 +125,8 @@ struct dentry *ouichefs_mount(struct file_system_type *fs_type, int flags,
 	else
 		pr_info("'%s' mount success\n", dev_name);
 
+	ouichefs_debug_file(dentry->d_inode->i_sb);
+
 	return dentry;
 }
 
@@ -36,6 +135,9 @@ struct dentry *ouichefs_mount(struct file_system_type *fs_type, int flags,
  */
 void ouichefs_kill_sb(struct super_block *sb)
 {
+	struct ouichefs_sb_info *sbi = OUICHEFS_SB(sb);
+
+	debugfs_remove(sbi->debug_file);
 	kill_block_super(sb);
 
 	pr_info("unmounted disk\n");
@@ -63,10 +165,14 @@ static int __init ouichefs_init(void)
 	ret = register_filesystem(&ouichefs_file_system_type);
 	if (ret) {
 		pr_err("register_filesystem() failed\n");
-		goto end;
+		goto free_inode_cache;
 	}
 
 	pr_info("module loaded\n");
+	return 0;
+
+free_inode_cache:
+	ouichefs_destroy_inode_cache();
 end:
 	return ret;
 }

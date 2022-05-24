@@ -75,11 +75,14 @@ struct ouichefs_sb_info {
 
 	unsigned long *ifree_bitmap; /* In-memory free inodes bitmap */
 	unsigned long *bfree_bitmap; /* In-memory free blocks bitmap */
+
+	struct dentry *debug_file;	/* File with debug information */
 };
 
 struct ouichefs_file_index_block {
-	struct list_head list;
-	uint32_t blocks[OUICHEFS_BLOCK_SIZE >> 2];
+	uint32_t own_block_number;
+	uint32_t next_block_number;
+	uint32_t blocks[(OUICHEFS_BLOCK_SIZE >> 2) - 2];
 };
 
 struct ouichefs_dir_block {

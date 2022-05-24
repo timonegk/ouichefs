@@ -228,6 +228,7 @@ static int ouichefs_create(struct inode *dir, struct dentry *dentry,
 	struct ouichefs_file_index_block *index;
 	struct buffer_head *bh, *bh2;
 	int ret = 0, i;
+	uint32_t ino;
 
 	/* Check filename length */
 	if (strlen(dentry->d_name.name) > OUICHEFS_FILENAME_LEN)
@@ -258,7 +259,8 @@ static int ouichefs_create(struct inode *dir, struct dentry *dentry,
 	 * Scrub index_block for new file/directory to avoid previous data
 	 * messing with new file/directory.
 	 */
-	bh2 = sb_bread(sb, OUICHEFS_INODE(inode)->index_block);
+	ino = OUICHEFS_INODE(inode)->index_block;
+	bh2 = sb_bread(sb, ino);
 	if (!bh2) {
 		ret = -EIO;
 		goto iput;
@@ -270,8 +272,9 @@ static int ouichefs_create(struct inode *dir, struct dentry *dentry,
 	} else {
 		index = (struct ouichefs_file_index_block *)bh2->b_data;
 		memset(index, 0, OUICHEFS_BLOCK_SIZE);
-		INIT_LIST_HEAD(&index->list);
-		pr_info("no: %u index: %p, bh->b_data: %p\n", OUICHEFS_INODE(inode)->index_block, index, bh2->b_data);
+		index->next_block_number = ino;
+		index->own_block_number = ino;
+		pr_info("no: %u index: %p, bh->b_data: %p\n", ino, index, bh2->b_data);
 	}
 
 	mark_buffer_dirty(bh2);
