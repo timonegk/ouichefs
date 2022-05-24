@@ -18,7 +18,7 @@
 #define OUICHEFS_MAX_FILESIZE     (1 << 22)  /* 4 MiB */
 #define OUICHEFS_FILENAME_LEN            28
 #define OUICHEFS_MAX_SUBFILES           128
-
+#define OUICHEFS_SHOW_VERSION	_IOR('O', 0, unsigned long)
 
 /*
  * ouiche_fs partition layout
@@ -49,6 +49,7 @@ struct ouichefs_inode {
 	uint32_t i_blocks;	/* Block count */
 	uint32_t i_nlink;	/* Hard links count */
 	uint32_t index_block;	/* Block with list of blocks for this file */
+	uint32_t last_index_block;  /* Newest version of file */
 };
 
 struct ouichefs_inode_info {

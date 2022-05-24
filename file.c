@@ -162,7 +162,7 @@ static int ouichefs_write_end(struct file *file, struct address_space *mapping,
 			/* Read index block to remove unused blocks */
 			bh_index = sb_bread(sb, ci->index_block);
 			if (!bh_index) {
-				pr_err("failed truncating '%s'. we just lost %lu blocks\n",
+				pr_err("failed truncating '%s'. we just lost %llu blocks\n",
 				       file->f_path.dentry->d_name.name,
 				       nr_blocks_old - inode->i_blocks);
 				goto end;
@@ -183,6 +183,54 @@ end:
 	return ret;
 }
 
+int ouichefs_change_file_version(struct file *file, int version)
+{
+	pr_info("Changing to version %d\n", version);
+	unsigned long ino = file->f_inode->i_ino;
+	uint32_t inode_block = (ino / OUICHEFS_INODES_PER_BLOCK) + 1;
+	uint32_t inode_shift = ino % OUICHEFS_INODES_PER_BLOCK;
+	struct super_block *sb = file->f_inode->i_sb;
+	struct ouichefs_file_index_block *index_block;
+	struct buffer_head *bh, *bh2;
+
+	bh = sb_bread(sb, inode_block);
+	if (!bh) {
+		return -EIO;
+	}
+	struct ouichefs_inode *cinode = (struct ouichefs_inode *)bh->b_data;
+	cinode += inode_shift;
+
+	uint32_t current_version_block = cinode->last_index_block;
+	uint32_t first_version_block = current_version_block;
+	while (version > 0) {
+		pr_info("x\n");
+		bh2 = sb_bread(sb, current_version_block);
+		index_block = (struct ouichefs_file_index_block *)bh2->b_data;
+		current_version_block = index_block->next_block_number;
+		version--;
+		if (current_version_block == first_version_block)
+			return -EINVAL;
+	}
+	pr_info("Setting index block from %d to %d", cinode->index_block, current_version_block);
+	cinode->index_block = current_version_block;
+	mark_buffer_dirty(bh);
+	sync_dirty_buffer(bh);
+	return 0;
+}
+
+long ouichefs_ioctl(struct file *file, unsigned int cmd, unsigned long argp)
+{
+	switch (cmd) {
+	case (OUICHEFS_SHOW_VERSION):
+		pr_info("Switch version\n");
+		return ouichefs_change_file_version(file, argp);
+		break;
+	default:
+		pr_info("Else\n");
+	}
+	return 0;
+}
+
 const struct address_space_operations ouichefs_aops = {
 	.readpage    = ouichefs_readpage,
 	.writepage   = ouichefs_writepage,
@@ -194,5 +242,6 @@ const struct file_operations ouichefs_file_ops = {
 	.owner      = THIS_MODULE,
 	.llseek     = generic_file_llseek,
 	.read_iter  = generic_file_read_iter,
-	.write_iter = generic_file_write_iter
+	.write_iter = generic_file_write_iter,
+	.unlocked_ioctl = ouichefs_ioctl
 };

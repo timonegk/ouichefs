@@ -227,6 +227,7 @@ static int ouichefs_create(struct inode *dir, struct dentry *dentry,
 	char *fblock;
 	struct ouichefs_file_index_block *index;
 	struct buffer_head *bh, *bh2;
+	struct ouichefs_inode *cinode;
 	int ret = 0, i;
 	uint32_t ino;
 
@@ -272,8 +273,20 @@ static int ouichefs_create(struct inode *dir, struct dentry *dentry,
 	} else {
 		index = (struct ouichefs_file_index_block *)bh2->b_data;
 		memset(index, 0, OUICHEFS_BLOCK_SIZE);
+
+		uint32_t inode_block = (ino / OUICHEFS_INODES_PER_BLOCK) + 1;
+		uint32_t inode_shift = ino % OUICHEFS_INODES_PER_BLOCK;
+		struct buffer_head *bh3 = sb_bread(sb, inode_block);
+		if (!bh3) {
+			return -EIO;
+		}
+		cinode = (struct ouichefs_inode *)bh3->b_data;
+		cinode += inode_shift;
+
+		cinode->last_index_block = cinode->index_block;
 		index->next_block_number = ino;
 		index->own_block_number = ino;
+
 		pr_info("no: %u index: %p, bh->b_data: %p\n", ino, index, bh2->b_data);
 	}
 
