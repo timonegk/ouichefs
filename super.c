@@ -14,6 +14,7 @@
 #include <linux/statfs.h>
 
 #include "ouichefs.h"
+#include "bitmap.h"
 
 static struct kmem_cache *ouichefs_inode_cache;
 
@@ -60,10 +61,35 @@ static int ouichefs_write_inode(struct inode *inode,
 	struct ouichefs_inode_info *ci = OUICHEFS_INODE(inode);
 	struct super_block *sb = inode->i_sb;
 	struct ouichefs_sb_info *sbi = OUICHEFS_SB(sb);
-	struct buffer_head *bh;
+	struct buffer_head *bh, *bh2;
+	struct ouichefs_file_index_block *index, *new_index;
 	uint32_t ino = inode->i_ino;
 	uint32_t inode_block = (ino / OUICHEFS_INODES_PER_BLOCK) + 1;
 	uint32_t inode_shift = ino % OUICHEFS_INODES_PER_BLOCK;
+	uint32_t new_index_no;
+
+	if (!(inode->i_mode & S_IFDIR)) {
+		bh = sb_bread(sb, ci->index_block);
+		if (!bh)
+			return -EIO;
+		index = (struct ouichefs_file_index_block *)bh->b_data;
+
+		new_index_no = get_free_block(sbi);
+		if (!new_index_no) {
+			return -ENOSPC;
+		}
+
+		bh2 = sb_bread(sb, new_index_no);
+		new_index = (struct ouichefs_file_index_block *)bh2->b_data;
+		pr_info("inode no: %u\n", ci->index_block);
+		//memcpy(new_index, index, sizeof(*new_index));
+		list_add(&new_index->list, &index->list);
+		ci->index_block = new_index_no;
+		mark_buffer_dirty(bh);
+		mark_buffer_dirty(bh2);
+		sync_dirty_buffer(bh);
+		sync_dirty_buffer(bh2);
+	}
 
 	if (ino >= sbi->nr_inodes)
 		return 0;

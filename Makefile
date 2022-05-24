@@ -5,6 +5,7 @@ KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 
 all:
 	make -C $(KERNELDIR) M=$(PWD) modules
+	cp ouichefs.ko ../share
 
 debug:
 	make -C $(KERNELDIR) M=$(PWD) ccflags-y+="-DDEBUG -g" modules

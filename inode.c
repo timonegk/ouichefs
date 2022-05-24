@@ -225,6 +225,7 @@ static int ouichefs_create(struct inode *dir, struct dentry *dentry,
 	struct ouichefs_inode_info *ci_dir;
 	struct ouichefs_dir_block *dblock;
 	char *fblock;
+	struct ouichefs_file_index_block *index;
 	struct buffer_head *bh, *bh2;
 	int ret = 0, i;
 
@@ -262,9 +263,19 @@ static int ouichefs_create(struct inode *dir, struct dentry *dentry,
 		ret = -EIO;
 		goto iput;
 	}
-	fblock = (char *)bh2->b_data;
-	memset(fblock, 0, OUICHEFS_BLOCK_SIZE);
+
+	if (mode & S_IFDIR) {
+		fblock = (char *)bh2->b_data;
+		memset(fblock, 0, OUICHEFS_BLOCK_SIZE);
+	} else {
+		index = (struct ouichefs_file_index_block *)bh2->b_data;
+		memset(index, 0, OUICHEFS_BLOCK_SIZE);
+		INIT_LIST_HEAD(&index->list);
+		pr_info("no: %u index: %p, bh->b_data: %p\n", OUICHEFS_INODE(inode)->index_block, index, bh2->b_data);
+	}
+
 	mark_buffer_dirty(bh2);
+	sync_dirty_buffer(bh2);
 	brelse(bh2);
 
 	/* Find first free slot in parent index and register new inode */

@@ -8,6 +8,7 @@
 #define _OUICHEFS_H
 
 #include <linux/fs.h>
+#include <linux/list.h>
 
 #define OUICHEFS_MAGIC  0x48434957
 
@@ -51,7 +52,7 @@ struct ouichefs_inode {
 };
 
 struct ouichefs_inode_info {
-	uint32_t index_block;
+	uint32_t index_block;    /* Block containing list of blocks */
 	struct inode vfs_inode;
 };
 
@@ -77,6 +78,7 @@ struct ouichefs_sb_info {
 };
 
 struct ouichefs_file_index_block {
+	struct list_head list;
 	uint32_t blocks[OUICHEFS_BLOCK_SIZE >> 2];
 };
 
