@@ -98,6 +98,7 @@ static int ouichefs_write_begin(struct file *file,
 				unsigned int len, unsigned int flags,
 				struct page **pagep, void **fsdata)
 {
+	pr_info("[%s]\n", __func__);
 	struct ouichefs_sb_info *sbi = OUICHEFS_SB(file->f_inode->i_sb);
 	int err;
 	struct inode *inode = file->f_inode;
@@ -190,10 +191,16 @@ static int ouichefs_write_end(struct file *file, struct address_space *mapping,
 			      loff_t pos, unsigned int len, unsigned int copied,
 			      struct page *page, void *fsdata)
 {
-	int ret;
+	pr_info("[%s]\n", __func__);
+	int ret, i, cmp;
 	struct inode *inode = file->f_inode;
 	struct ouichefs_inode_info *ci = OUICHEFS_INODE(inode);
 	struct super_block *sb = inode->i_sb;
+	struct ouichefs_sb_info *sbi = OUICHEFS_SB(sb);
+	struct buffer_head *bh_index, *bh_old_index;
+	struct buffer_head *bh_new_data_block, *bh_old_data_block;
+	uint32_t old_index_no, new_block_no, old_block_no;
+	struct ouichefs_file_index_block *index, *old_index;
 
 	/* Complete the write() */
 	ret = generic_write_end(file, mapping, pos, len, copied, page, fsdata);
@@ -239,6 +246,48 @@ static int ouichefs_write_end(struct file *file, struct address_space *mapping,
 			brelse(bh_index);
 		}
 	}
+
+
+	/* Check which blocks changed */
+	bh_index = sb_bread(sb, ci->index_block);
+	if (!bh_index)
+		return -EIO;
+	index = (struct ouichefs_file_index_block *)bh_index->b_data;
+
+	old_index_no = index->previous_block_number;
+	if (!old_index_no)
+		return -ENOSPC;
+
+	bh_old_index = sb_bread(sb, old_index_no);
+	old_index = (struct ouichefs_file_index_block *)bh_old_index->b_data;
+
+	for (i = 0; i < sizeof(index->blocks) / sizeof(uint32_t); i++) {
+		new_block_no = index->blocks[i];
+		old_block_no = old_index->blocks[i];
+
+		if (new_block_no == 0 || old_block_no == 0)
+			/* one of the blocks is empty, no deduplication possible */
+			continue;
+
+		bh_new_data_block = sb_bread(sb, new_block_no);
+		bh_old_data_block = sb_bread(sb, old_block_no);
+		cmp = memcmp(bh_new_data_block->b_data, bh_old_data_block->b_data,
+				OUICHEFS_BLOCK_SIZE);
+		pr_info("First: %c, Second: %c\n", bh_old_data_block->b_data[0], bh_new_data_block->b_data[0]);
+		if (cmp == 0) {
+			pr_info("Blocks are the same, delete %d, keep %d\n", new_block_no, old_block_no);
+			/* the blocks are the same -> deduplication */
+			index->blocks[i] = old_block_no;
+			put_block(sbi, new_block_no);
+			mark_buffer_dirty(bh_index);
+		}
+		brelse(bh_new_data_block);
+		brelse(bh_old_data_block);
+	}
+	sync_dirty_buffer(bh_index);
+	brelse(bh_index);
+	brelse(bh_old_index);
+
 end:
 	return ret;
 }
@@ -262,6 +311,7 @@ int ouichefs_change_file_version(struct file *file, int version)
 	info->index_block = current_version_block;
 
 	mark_inode_dirty(file->f_inode);
+//	invalidate_inode_buffers(file->f_inode);
 	invalidate_mapping_pages(file->f_inode->i_mapping, 0, -1);
 	return 0;
 }
@@ -308,6 +358,12 @@ long ouichefs_ioctl(struct file *file, unsigned int cmd, unsigned long argp)
 	return 0;
 }
 
+ssize_t file_write_iter(struct kiocb *a, struct iov_iter *b)
+{
+	pr_info("[%s]\n", __func__);
+	return generic_file_write_iter(a, b);
+}
+
 const struct address_space_operations ouichefs_aops = {
 	.readpage    = ouichefs_readpage,
 	.writepage   = ouichefs_writepage,
@@ -319,6 +375,6 @@ const struct file_operations ouichefs_file_ops = {
 	.owner      = THIS_MODULE,
 	.llseek     = generic_file_llseek,
 	.read_iter  = generic_file_read_iter,
-	.write_iter = generic_file_write_iter,
+	.write_iter = file_write_iter,
 	.unlocked_ioctl = ouichefs_ioctl
 };
