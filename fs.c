@@ -34,10 +34,10 @@ static int debug_seq_show(struct seq_file *file, void *v)
 		ci = OUICHEFS_INODE(inode);
 
 		if (inode->i_nlink == 0)
-			continue;
+			goto iput;
 
 		if (!S_ISREG(inode->i_mode))
-			continue;
+			goto iput;
 
 		count = 0;
 
@@ -60,6 +60,8 @@ static int debug_seq_show(struct seq_file *file, void *v)
 
 		}
 		seq_printf(file, "%d %d [%s]\n", ino, count, c + 2);
+iput:
+		iput(inode);
 	}
 	return 0;
 }
