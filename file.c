@@ -142,6 +142,10 @@ static int ouichefs_write_end(struct file *file, struct address_space *mapping,
 	struct ouichefs_file_index_block *index, *new_index;
 	uint32_t new_index_no, new_block_no;
 
+
+	/* Complete the write() */
+	ret = generic_write_end(file, mapping, pos, len, copied, page, fsdata);
+
 	/* Duplicate index block and data */
 	bh_index = sb_bread(sb, ci->index_block);
 	if (!bh_index)
@@ -167,8 +171,9 @@ static int ouichefs_write_end(struct file *file, struct address_space *mapping,
 
 		bh_new_data_block = sb_bread(sb, new_block_no);
 		bh_data_block = sb_bread(sb, index->blocks[i]);
-		memcpy(bh_new_data_block->b_data, bh_data_block->b_data, sizeof(bh_data_block->b_data));
-		pr_info("%s copied as %s\n", bh_data_block->b_data, bh_new_data_block->b_data);
+		pr_info("%d\n", index->blocks[i]);
+		memcpy(bh_new_data_block->b_data, bh_data_block->b_data, OUICHEFS_BLOCK_SIZE);
+		pr_info("%c copied as %c\n", bh_data_block->b_data[0], bh_new_data_block->b_data[0]);
 		mark_buffer_dirty(bh_new_data_block);
 		//sync_dirty_buffer(bh_new_data_block);
 		brelse(bh_new_data_block);
@@ -192,8 +197,6 @@ static int ouichefs_write_end(struct file *file, struct address_space *mapping,
 	brelse(bh_index);
 	brelse(bh_new_index);
 
-	/* Complete the write() */
-	ret = generic_write_end(file, mapping, pos, len, copied, page, fsdata);
 	if (ret < len) {
 		pr_err("%s:%d: wrote less than asked... what do I do? nothing for now...\n",
 		       __func__, __LINE__);
@@ -286,6 +289,7 @@ int ouichefs_change_file_version(struct file *file, int version)
 	info->index_block = current_version_block;
 
 	mark_inode_dirty(file->f_inode);
+	invalidate_mapping_pages(file->f_inode->i_mapping, 0, -1);
 	return 0;
 }
 
