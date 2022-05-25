@@ -120,6 +120,11 @@ static int ouichefs_write_begin(struct file *file,
 	if (nr_allocs > sbi->nr_free_blocks)
 		return -ENOSPC;
 
+	if (ci->index_block != ci->last_index_block) {
+		pr_err("Unable to write to old version!\n");
+		return -EINVAL;
+	}
+
 	/* Duplicate index block and data */
 	bh_index = sb_bread(sb, ci->index_block);
 	if (!bh_index)
