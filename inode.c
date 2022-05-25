@@ -381,7 +381,7 @@ static int ouichefs_unlink(struct inode *dir, struct dentry *dentry)
 	for (i = 0; i < inode->i_blocks - 1; i++) {
 		char *block;
 
-		if(!file_block->blocks[i])
+		if (!file_block->blocks[i])
 			continue;
 
 		put_block(sbi, file_block->blocks[i]);

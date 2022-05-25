@@ -102,7 +102,8 @@ static int ouichefs_write_begin(struct file *file,
 	int err;
 	struct inode *inode = file->f_inode;
 	uint32_t nr_allocs = 0;
-	struct buffer_head *bh_index, *bh_new_index, *bh_new_data_block, *bh_data_block;
+	struct buffer_head *bh_index, *bh_new_index;
+	struct buffer_head *bh_new_data_block, *bh_data_block;
 	struct ouichefs_inode_info *ci = OUICHEFS_INODE(inode);
 	struct super_block *sb = inode->i_sb;
 	struct ouichefs_file_index_block *index, *new_index;
@@ -132,9 +133,8 @@ static int ouichefs_write_begin(struct file *file,
 	index = (struct ouichefs_file_index_block *)bh_index->b_data;
 
 	new_index_no = get_free_block(sbi);
-	if (!new_index_no) {
+	if (!new_index_no)
 		return -ENOSPC;
-	}
 
 	bh_new_index = sb_bread(sb, new_index_no);
 	new_index = (struct ouichefs_file_index_block *)bh_new_index->b_data;
@@ -150,22 +150,19 @@ static int ouichefs_write_begin(struct file *file,
 
 		bh_new_data_block = sb_bread(sb, new_block_no);
 		bh_data_block = sb_bread(sb, index->blocks[i]);
-		pr_info("%d\n", index->blocks[i]);
-		memcpy(bh_new_data_block->b_data, bh_data_block->b_data, OUICHEFS_BLOCK_SIZE);
-		pr_info("%c copied as %c\n", bh_data_block->b_data[0], bh_new_data_block->b_data[0]);
+		memcpy(bh_new_data_block->b_data, bh_data_block->b_data,
+				OUICHEFS_BLOCK_SIZE);
 		mark_buffer_dirty(bh_new_data_block);
 		sync_dirty_buffer(bh_new_data_block);
 		brelse(bh_new_data_block);
 		brelse(bh_data_block);
 		new_index->blocks[i] = new_block_no;
-		pr_info("copied block %d to %d\n", index->blocks[i], new_block_no);
 	}
 
 	new_index->own_block_number = new_index_no;
 	new_index->previous_block_number = ci->index_block;
 	ci->index_block = new_index_no;
 	ci->last_index_block = new_index_no;
-	pr_info("Created new index block %d\n", new_index_no);
 	mark_buffer_dirty(bh_new_index);
 	mark_buffer_dirty(bh_index);
 	sync_dirty_buffer(bh_new_index);
@@ -262,7 +259,6 @@ int ouichefs_change_file_version(struct file *file, int version)
 		if (current_version_block == 0)
 			return -EINVAL;
 	}
-	pr_info("Last index block: %d, before change: %d, now: %d\n", info->last_index_block, info->index_block, current_version_block);
 	info->index_block = current_version_block;
 
 	mark_inode_dirty(file->f_inode);
@@ -277,9 +273,9 @@ int ouichefs_restore_file_version(struct file *file)
 	struct super_block *sb = file->f_inode->i_sb;
 	struct ouichefs_sb_info *sbi = OUICHEFS_SB(sb);
 	struct ouichefs_file_index_block *index;
+	uint32_t current_version_block = info->last_index_block;
 	int i;
 
-	uint32_t current_version_block = info->last_index_block;
 	while (current_version_block != info->index_block) {
 		bh_index = sb_bread(sb, current_version_block);
 		if (!bh_index)
@@ -304,10 +300,8 @@ long ouichefs_ioctl(struct file *file, unsigned int cmd, unsigned long argp)
 	switch (cmd) {
 	case (OUICHEFS_SHOW_VERSION):
 		return ouichefs_change_file_version(file, argp);
-		break;
 	case (OUICHEFS_RESTORE_VERSION):
 		return ouichefs_restore_file_version(file);
-		break;
 	default:
 		return -EINVAL;
 	}

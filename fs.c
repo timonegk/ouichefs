@@ -23,14 +23,11 @@ static int debug_seq_show(struct seq_file *file, void *v)
 	struct ouichefs_sb_info *sbi = OUICHEFS_SB(sb);
 	struct inode *inode;
 	struct ouichefs_inode_info *ci;
-	uint32_t first_block_number, current_block_number;
+	uint32_t first_block_no, cur_block_no;
 	struct buffer_head *bh;
 	int count;
-	struct ouichefs_file_index_block *file_index;
+	struct ouichefs_file_index_block *index;
 	char c[100];
-
-	//c = kmalloc(sizeof(char) * 100, GFP_KERNEL);
-
 
 	for (ino = 0; ino < sbi->nr_inodes; ino++) {
 		inode = ouichefs_iget(sb, ino);
@@ -39,31 +36,32 @@ static int debug_seq_show(struct seq_file *file, void *v)
 		if (inode->i_nlink == 0)
 			continue;
 
-		if (S_ISREG(inode->i_mode)) {
-			count = 0;
+		if (!S_ISREG(inode->i_mode))
+			continue;
 
-			memset(c, 0, sizeof(c));
+		count = 0;
 
-			bh = sb_bread(sb, ci->last_index_block);
+		memset(c, 0, sizeof(c));
+
+		bh = sb_bread(sb, ci->last_index_block);
+		if (!bh)
+			continue;
+
+		index = (struct ouichefs_file_index_block *)bh->b_data;
+		first_block_no = index->own_block_number;
+		cur_block_no = first_block_no;
+		do {
+			count++;
+			snprintf(c, 100, "%s, %d", c, cur_block_no);
+
+			bh = sb_bread(sb, cur_block_no);
 			if (!bh)
 				continue;
 
-			file_index = (struct ouichefs_file_index_block *)bh->b_data;
-			first_block_number = file_index->own_block_number;
-			current_block_number = first_block_number;
-			do {
-				count++;
-				snprintf(c, 100, "%s, %d", c, current_block_number);
-
-				bh = sb_bread(sb, current_block_number);
-				if (!bh)
-					continue;
-
-				file_index = (struct ouichefs_file_index_block *)bh->b_data;
-				current_block_number = file_index->previous_block_number;
-			} while (current_block_number != 0);
-			seq_printf(file, "%d %d [%s]\n", ino, count, c + 2);
-		}
+			index = (struct ouichefs_file_index_block *)bh->b_data;
+			cur_block_no = index->previous_block_number;
+		} while (cur_block_no != 0);
+		seq_printf(file, "%d %d [%s]\n", ino, count, c + 2);
 	}
 	return 0;
 }
@@ -87,8 +85,8 @@ int ouichefs_debug_file(struct super_block *sb)
 	struct dentry *debugfs_file;
 	struct ouichefs_sb_info *sbi = OUICHEFS_SB(sb);
 
-	debugfs_file = debugfs_create_file(sb->s_id, 0400, NULL,
-                        NULL, &debug_fops);
+	debugfs_file = debugfs_create_file(sb->s_id, 0400, NULL, NULL,
+					&debug_fops);
 	debugfs_file->d_inode->i_private = sb;
 	if (!debugfs_file) {
 		pr_err("Debugfs file creation failed\n");
