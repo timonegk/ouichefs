@@ -43,14 +43,10 @@ static int debug_seq_show(struct seq_file *file, void *v)
 
 		memset(c, 0, sizeof(c));
 
-		bh = sb_bread(sb, ci->last_index_block);
-		if (!bh)
-			continue;
-
-		index = (struct ouichefs_file_index_block *)bh->b_data;
-		first_block_no = index->own_block_number;
+		first_block_no = ci->last_index_block;
 		cur_block_no = first_block_no;
-		do {
+
+		while (cur_block_no != 0) {
 			count++;
 			snprintf(c, 100, "%s, %d", c, cur_block_no);
 
@@ -60,7 +56,9 @@ static int debug_seq_show(struct seq_file *file, void *v)
 
 			index = (struct ouichefs_file_index_block *)bh->b_data;
 			cur_block_no = index->previous_block_number;
-		} while (cur_block_no != 0);
+
+
+		}
 		seq_printf(file, "%d %d [%s]\n", ino, count, c + 2);
 	}
 	return 0;
