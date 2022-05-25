@@ -149,7 +149,6 @@ static int ouichefs_write_begin(struct file *file,
 		memcpy(bh_new_data_block->b_data, bh_data_block->b_data, OUICHEFS_BLOCK_SIZE);
 		pr_info("%c copied as %c\n", bh_data_block->b_data[0], bh_new_data_block->b_data[0]);
 		mark_buffer_dirty(bh_new_data_block);
-		sync_dirty_buffer(bh_new_data_block);
 		brelse(bh_new_data_block);
 		brelse(bh_data_block);
 		new_index->blocks[i] = new_block_no;
@@ -163,8 +162,6 @@ static int ouichefs_write_begin(struct file *file,
 	pr_info("Created new index block %d\n", new_index_no);
 	mark_buffer_dirty(bh_new_index);
 	mark_buffer_dirty(bh_index);
-	sync_dirty_buffer(bh_new_index);
-	sync_dirty_buffer(bh_index);
 	brelse(bh_index);
 	brelse(bh_new_index);
 
