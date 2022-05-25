@@ -54,6 +54,7 @@ struct ouichefs_inode {
 
 struct ouichefs_inode_info {
 	uint32_t index_block;    /* Block containing list of blocks */
+	uint32_t last_index_block; /* <--- Newest version of file */
 	struct inode vfs_inode;
 };
 
@@ -82,7 +83,7 @@ struct ouichefs_sb_info {
 
 struct ouichefs_file_index_block {
 	uint32_t own_block_number;
-	uint32_t next_block_number;
+	uint32_t previous_block_number;
 	uint32_t blocks[(OUICHEFS_BLOCK_SIZE >> 2) - 2];
 };
 

@@ -71,6 +71,7 @@ struct inode *ouichefs_iget(struct super_block *sb, unsigned long ino)
 	set_nlink(inode, le32_to_cpu(cinode->i_nlink));
 
 	ci->index_block = le32_to_cpu(cinode->index_block);
+	ci->last_index_block = le32_to_cpu(cinode->last_index_block);
 
 	if (S_ISDIR(inode->i_mode)) {
 		inode->i_fop = &ouichefs_dir_ops;
@@ -183,6 +184,7 @@ static struct inode *ouichefs_new_inode(struct inode *dir, mode_t mode)
 		goto put_inode;
 	}
 	ci->index_block = bno;
+	ci->last_index_block = bno;
 
 	/* Initialize inode */
 	inode_init_owner(inode, dir, mode);
@@ -274,20 +276,8 @@ static int ouichefs_create(struct inode *dir, struct dentry *dentry,
 		index = (struct ouichefs_file_index_block *)bh2->b_data;
 		memset(index, 0, OUICHEFS_BLOCK_SIZE);
 
-		uint32_t inode_block = (ino / OUICHEFS_INODES_PER_BLOCK) + 1;
-		uint32_t inode_shift = ino % OUICHEFS_INODES_PER_BLOCK;
-		struct buffer_head *bh3 = sb_bread(sb, inode_block);
-		if (!bh3) {
-			return -EIO;
-		}
-		cinode = (struct ouichefs_inode *)bh3->b_data;
-		cinode += inode_shift;
-
-		cinode->last_index_block = cinode->index_block;
-		index->next_block_number = ino;
+		index->previous_block_number = 0;
 		index->own_block_number = ino;
-
-		pr_info("no: %u index: %p, bh->b_data: %p\n", ino, index, bh2->b_data);
 	}
 
 	mark_buffer_dirty(bh2);

@@ -22,58 +22,53 @@ static int debug_seq_show(struct seq_file *file, void *v)
 	struct super_block *sb = (struct super_block *)file->private;
 	struct ouichefs_sb_info *sbi = OUICHEFS_SB(sb);
 	struct inode *inode;
-	struct ouichefs_inode *cinode;
-	uint32_t inode_block, inode_shift;
+	struct ouichefs_inode_info *ci;
 	uint32_t first_block_number, current_block_number;
-	struct buffer_head *bh;
+	struct buffer_head *bh, *bh2;
 	int count;
 	struct ouichefs_file_index_block *file_index;
 	char c[100];
+	char *first_data;
 
 	//c = kmalloc(sizeof(char) * 100, GFP_KERNEL);
 
 
 	for (ino = 0; ino < sbi->nr_inodes; ino++) {
-		inode_block = (ino / OUICHEFS_INODES_PER_BLOCK) + 1;
-		inode_shift = ino % OUICHEFS_INODES_PER_BLOCK;
-		bh = sb_bread(sb, inode_block);
-		if (!bh) {
-			continue;
-		}
-		cinode = (struct ouichefs_inode *)bh->b_data;
-		cinode += inode_shift;
-		if (!cinode)
+		inode = ouichefs_iget(sb, ino);
+		ci = OUICHEFS_INODE(inode);
+
+		if (inode->i_nlink == 0)
 			continue;
 
-		if (cinode->i_nlink == 0)
-			continue;
-
-		if (S_ISREG(cinode->i_mode)) {
+		if (S_ISREG(inode->i_mode)) {
 			count = 0;
 
 			memset(c, 0, sizeof(c));
 
-			bh = sb_bread(sb, cinode->index_block);
+			bh = sb_bread(sb, ci->index_block);
 			if (!bh)
 				continue;
 
 			file_index = (struct ouichefs_file_index_block *)bh->b_data;
 			first_block_number = file_index->own_block_number;
 			current_block_number = first_block_number;
-
 			do {
 				count++;
 				snprintf(c, 100, "%s, %d", c, current_block_number);
+				uint32_t first_data_no = file_index->blocks[0];
+				bh2 = sb_bread(sb, first_data_no);
+				first_data = (char *)bh2->b_data;
+
+				pr_info("%d %s\n", current_block_number, first_data);
 
 				bh = sb_bread(sb, current_block_number);
 				if (!bh)
 					continue;
 
 				file_index = (struct ouichefs_file_index_block *)bh->b_data;
-				current_block_number = file_index->next_block_number;
-
-			} while (current_block_number != first_block_number);
-
+				current_block_number = file_index->previous_block_number;
+			} while (current_block_number != 0);
+			pr_info("end\n");
 			seq_printf(file, "%d %d [%s]\n", ino, count, c + 2);
 		}
 	}
