@@ -13,6 +13,7 @@
 #include <linux/buffer_head.h>
 #include <linux/mpage.h>
 #include <linux/blkdev.h>
+#include <linux/writeback.h>
 
 #include "ouichefs.h"
 #include "bitmap.h"
@@ -148,6 +149,7 @@ static int ouichefs_write_begin(struct file *file,
 		memcpy(bh_new_data_block->b_data, bh_data_block->b_data, OUICHEFS_BLOCK_SIZE);
 		pr_info("%c copied as %c\n", bh_data_block->b_data[0], bh_new_data_block->b_data[0]);
 		mark_buffer_dirty(bh_new_data_block);
+		sync_dirty_buffer(bh_new_data_block);
 		brelse(bh_new_data_block);
 		brelse(bh_data_block);
 		new_index->blocks[i] = new_block_no;
@@ -161,6 +163,8 @@ static int ouichefs_write_begin(struct file *file,
 	pr_info("Created new index block %d\n", new_index_no);
 	mark_buffer_dirty(bh_new_index);
 	mark_buffer_dirty(bh_index);
+	sync_dirty_buffer(bh_new_index);
+	sync_dirty_buffer(bh_index);
 	brelse(bh_index);
 	brelse(bh_new_index);
 
@@ -202,6 +206,7 @@ static int ouichefs_write_end(struct file *file, struct address_space *mapping,
 		inode->i_blocks = inode->i_size / OUICHEFS_BLOCK_SIZE + 2;
 		inode->i_mtime = inode->i_ctime = current_time(inode);
 		mark_inode_dirty(inode);
+		write_inode_now(inode, 1);
 
 		/* If file is smaller than before, free unused blocks */
 		if (nr_blocks_old > inode->i_blocks) {
