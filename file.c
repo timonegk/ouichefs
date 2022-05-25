@@ -267,14 +267,46 @@ int ouichefs_change_file_version(struct file *file, int version)
 	return 0;
 }
 
+int ouichefs_restore_file_version(struct file *file)
+{
+	struct ouichefs_inode_info *info = OUICHEFS_INODE(file->f_inode);
+	struct buffer_head *bh_index;
+	struct super_block *sb = file->f_inode->i_sb;
+	struct ouichefs_sb_info *sbi = OUICHEFS_SB(sb);
+	struct ouichefs_file_index_block *index;
+	int i;
+
+	uint32_t current_version_block = info->last_index_block;
+	while (current_version_block != info->index_block) {
+		bh_index = sb_bread(sb, current_version_block);
+		if (!bh_index)
+			return -EIO;
+		index = (struct ouichefs_file_index_block *)bh_index->b_data;
+
+		for (i = 0; i < sizeof(index->blocks) / sizeof(uint32_t); i++) {
+			if (index->blocks[i] == 0)
+				continue;
+			put_block(sbi, index->blocks[i]);
+		}
+		put_block(sbi, current_version_block);
+		current_version_block = index->previous_block_number;
+		brelse(bh_index);
+	}
+	info->last_index_block = info->index_block;
+	return 0;
+}
+
 long ouichefs_ioctl(struct file *file, unsigned int cmd, unsigned long argp)
 {
 	switch (cmd) {
 	case (OUICHEFS_SHOW_VERSION):
 		return ouichefs_change_file_version(file, argp);
 		break;
+	case (OUICHEFS_RESTORE_VERSION):
+		return ouichefs_restore_file_version(file);
+		break;
 	default:
-		pr_info("Else\n");
+		return -EINVAL;
 	}
 	return 0;
 }

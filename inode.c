@@ -229,7 +229,6 @@ static int ouichefs_create(struct inode *dir, struct dentry *dentry,
 	char *fblock;
 	struct ouichefs_file_index_block *index;
 	struct buffer_head *bh, *bh2;
-	struct ouichefs_inode *cinode;
 	int ret = 0, i;
 	uint32_t ino;
 

@@ -19,6 +19,7 @@
 #define OUICHEFS_FILENAME_LEN            28
 #define OUICHEFS_MAX_SUBFILES           128
 #define OUICHEFS_SHOW_VERSION	_IOR('O', 0, unsigned long)
+#define OUICHEFS_RESTORE_VERSION	_IO('O', 1)
 
 /*
  * ouiche_fs partition layout
