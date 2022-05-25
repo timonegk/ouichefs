@@ -24,11 +24,10 @@ static int debug_seq_show(struct seq_file *file, void *v)
 	struct inode *inode;
 	struct ouichefs_inode_info *ci;
 	uint32_t first_block_number, current_block_number;
-	struct buffer_head *bh, *bh2;
+	struct buffer_head *bh;
 	int count;
 	struct ouichefs_file_index_block *file_index;
 	char c[100];
-	char *first_data;
 
 	//c = kmalloc(sizeof(char) * 100, GFP_KERNEL);
 
@@ -45,7 +44,7 @@ static int debug_seq_show(struct seq_file *file, void *v)
 
 			memset(c, 0, sizeof(c));
 
-			bh = sb_bread(sb, ci->index_block);
+			bh = sb_bread(sb, ci->last_index_block);
 			if (!bh)
 				continue;
 
@@ -55,11 +54,6 @@ static int debug_seq_show(struct seq_file *file, void *v)
 			do {
 				count++;
 				snprintf(c, 100, "%s, %d", c, current_block_number);
-				uint32_t first_data_no = file_index->blocks[0];
-				bh2 = sb_bread(sb, first_data_no);
-				first_data = (char *)bh2->b_data;
-
-				pr_info("%d %s\n", current_block_number, first_data);
 
 				bh = sb_bread(sb, current_block_number);
 				if (!bh)
@@ -68,7 +62,6 @@ static int debug_seq_show(struct seq_file *file, void *v)
 				file_index = (struct ouichefs_file_index_block *)bh->b_data;
 				current_block_number = file_index->previous_block_number;
 			} while (current_block_number != 0);
-			pr_info("end\n");
 			seq_printf(file, "%d %d [%s]\n", ino, count, c + 2);
 		}
 	}

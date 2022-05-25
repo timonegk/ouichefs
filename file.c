@@ -99,7 +99,14 @@ static int ouichefs_write_begin(struct file *file,
 {
 	struct ouichefs_sb_info *sbi = OUICHEFS_SB(file->f_inode->i_sb);
 	int err;
+	struct inode *inode = file->f_inode;
 	uint32_t nr_allocs = 0;
+	struct buffer_head *bh_index, *bh_new_index, *bh_new_data_block, *bh_data_block;
+	struct ouichefs_inode_info *ci = OUICHEFS_INODE(inode);
+	struct super_block *sb = inode->i_sb;
+	struct ouichefs_file_index_block *index, *new_index;
+	uint32_t new_index_no, new_block_no;
+	int i;
 
 	/* Check if the write can be completed (enough space?) */
 	if (pos + len > OUICHEFS_MAX_FILESIZE)
@@ -111,39 +118,6 @@ static int ouichefs_write_begin(struct file *file,
 		nr_allocs = 0;
 	if (nr_allocs > sbi->nr_free_blocks)
 		return -ENOSPC;
-
-	/* prepare the write */
-	err = block_write_begin(mapping, pos, len, flags, pagep,
-				ouichefs_file_get_block);
-	/* if this failed, reclaim newly allocated blocks */
-	if (err < 0) {
-		pr_err("%s:%d: newly allocated blocks reclaim not implemented yet\n",
-		       __func__, __LINE__);
-	}
-	return err;
-}
-
-/*
- * Called by the VFS after writing data from a write() syscall to the page
- * cache. This functions updates inode metadata and truncates the file if
- * necessary.
- */
-static int ouichefs_write_end(struct file *file, struct address_space *mapping,
-			      loff_t pos, unsigned int len, unsigned int copied,
-			      struct page *page, void *fsdata)
-{
-	int ret, i;
-	struct inode *inode = file->f_inode;
-	struct ouichefs_inode_info *ci = OUICHEFS_INODE(inode);
-	struct super_block *sb = inode->i_sb;
-	struct ouichefs_sb_info *sbi = OUICHEFS_SB(sb);
-	struct buffer_head *bh_index, *bh_new_index, *bh_new_data_block, *bh_data_block;
-	struct ouichefs_file_index_block *index, *new_index;
-	uint32_t new_index_no, new_block_no;
-
-
-	/* Complete the write() */
-	ret = generic_write_end(file, mapping, pos, len, copied, page, fsdata);
 
 	/* Duplicate index block and data */
 	bh_index = sb_bread(sb, ci->index_block);
@@ -184,10 +158,39 @@ static int ouichefs_write_end(struct file *file, struct address_space *mapping,
 	new_index->previous_block_number = ci->index_block;
 	ci->index_block = new_index_no;
 	ci->last_index_block = new_index_no;
+	pr_info("Created new index block %d\n", new_index_no);
 	mark_buffer_dirty(bh_new_index);
 	mark_buffer_dirty(bh_index);
 	brelse(bh_index);
 	brelse(bh_new_index);
+
+	/* prepare the write */
+	err = block_write_begin(mapping, pos, len, flags, pagep,
+				ouichefs_file_get_block);
+	/* if this failed, reclaim newly allocated blocks */
+	if (err < 0) {
+		pr_err("%s:%d: newly allocated blocks reclaim not implemented yet\n",
+		       __func__, __LINE__);
+	}
+	return err;
+}
+
+/*
+ * Called by the VFS after writing data from a write() syscall to the page
+ * cache. This functions updates inode metadata and truncates the file if
+ * necessary.
+ */
+static int ouichefs_write_end(struct file *file, struct address_space *mapping,
+			      loff_t pos, unsigned int len, unsigned int copied,
+			      struct page *page, void *fsdata)
+{
+	int ret;
+	struct inode *inode = file->f_inode;
+	struct ouichefs_inode_info *ci = OUICHEFS_INODE(inode);
+	struct super_block *sb = inode->i_sb;
+
+	/* Complete the write() */
+	ret = generic_write_end(file, mapping, pos, len, copied, page, fsdata);
 
 	if (ret < len) {
 		pr_err("%s:%d: wrote less than asked... what do I do? nothing for now...\n",
@@ -249,6 +252,7 @@ int ouichefs_change_file_version(struct file *file, int version)
 		if (current_version_block == 0)
 			return -EINVAL;
 	}
+	pr_info("Last index block: %d, before change: %d, now: %d\n", info->last_index_block, info->index_block, current_version_block);
 	info->index_block = current_version_block;
 
 	mark_inode_dirty(file->f_inode);
@@ -260,7 +264,6 @@ long ouichefs_ioctl(struct file *file, unsigned int cmd, unsigned long argp)
 {
 	switch (cmd) {
 	case (OUICHEFS_SHOW_VERSION):
-		pr_info("Switch version\n");
 		return ouichefs_change_file_version(file, argp);
 		break;
 	default:
