@@ -336,7 +336,7 @@ static int ouichefs_unlink(struct inode *dir, struct dentry *dentry)
 	bno = OUICHEFS_INODE(inode)->index_block;
 
 	/* Read parent directory index */
-	bh = sb_bread(sb, OUICHEFS_INODE(dir)->index_block);
+	bh = sb_bread(sb, OUICHEFS_INODE(dir)->last_index_block);
 	if (!bh)
 		return -EIO;
 	dir_block = (struct ouichefs_dir_block *)bh->b_data;
@@ -372,26 +372,31 @@ static int ouichefs_unlink(struct inode *dir, struct dentry *dentry)
 	 * forever. If we fail to scrub a data block, don't fail (too late
 	 * anyway), just put the block and continue.
 	 */
-	bh = sb_bread(sb, bno);
-	if (!bh)
-		goto clean_inode;
-	file_block = (struct ouichefs_file_index_block *)bh->b_data;
-	if (S_ISDIR(inode->i_mode))
-		goto scrub;
-	for (i = 0; i < inode->i_blocks - 1; i++) {
-		char *block;
+	while (bno != 0) {
+		bh = sb_bread(sb, bno);
+		if (!bh)
+			goto clean_inode;
+		file_block = (struct ouichefs_file_index_block *)bh->b_data;
+		if (S_ISDIR(inode->i_mode))
+			goto scrub;
+		for (i = 0; i < sizeof(file_block->blocks) / sizeof(uint32_t); i++) {
+			char *block;
 
-		if (!file_block->blocks[i])
-			continue;
+			if (!file_block->blocks[i])
+				continue;
 
-		put_block(sbi, file_block->blocks[i]);
-		bh2 = sb_bread(sb, file_block->blocks[i]);
-		if (!bh2)
-			continue;
-		block = (char *)bh2->b_data;
-		memset(block, 0, OUICHEFS_BLOCK_SIZE);
-		mark_buffer_dirty(bh2);
-		brelse(bh2);
+			put_block(sbi, file_block->blocks[i]);
+			bh2 = sb_bread(sb, file_block->blocks[i]);
+			if (!bh2)
+				continue;
+			block = (char *)bh2->b_data;
+			memset(block, 0, OUICHEFS_BLOCK_SIZE);
+			mark_buffer_dirty(bh2);
+			brelse(bh2);
+		}
+		bno = file_block->previous_block_number;
+		/* Free index block */
+		put_block(sbi, bno);
 	}
 
 scrub:
@@ -413,8 +418,7 @@ clean_inode:
 		inode->i_atime.tv_sec = 0;
 	mark_inode_dirty(inode);
 
-	/* Free inode and index block from bitmap */
-	put_block(sbi, bno);
+	/* Free inode from bitmap */
 	put_inode(sbi, ino);
 
 	return 0;
