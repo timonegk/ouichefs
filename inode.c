@@ -332,10 +332,10 @@ static int ouichefs_unlink(struct inode *dir, struct dentry *dentry)
 	int i, f_id = -1, nr_subs = 0;
 
 	ino = inode->i_ino;
-	bno = OUICHEFS_INODE(inode)->index_block;
+	bno = OUICHEFS_INODE(inode)->last_index_block;
 
 	/* Read parent directory index */
-	bh = sb_bread(sb, OUICHEFS_INODE(dir)->last_index_block);
+	bh = sb_bread(sb, OUICHEFS_INODE(dir)->index_block);
 	if (!bh)
 		return -EIO;
 	dir_block = (struct ouichefs_dir_block *)bh->b_data;
