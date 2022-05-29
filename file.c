@@ -98,7 +98,6 @@ static int ouichefs_write_begin(struct file *file,
 				unsigned int len, unsigned int flags,
 				struct page **pagep, void **fsdata)
 {
-	pr_info("[%s]\n", __func__);
 	struct ouichefs_sb_info *sbi = OUICHEFS_SB(file->f_inode->i_sb);
 	int err;
 	struct inode *inode = file->f_inode;
@@ -127,10 +126,8 @@ static int ouichefs_write_begin(struct file *file,
 		return -EINVAL;
 	}	
 
-
-	pr_info("index %lu, alloc %d\n",(*pagep)->index, nr_allocs);
-	if (file->private_data == -1) {
-		file->private_data = pos;
+	if ((long long int) file->private_data == -1) {
+		file->private_data = (void *) pos;
 		/* Duplicate index block and data */
 		bh_index = sb_bread(sb, ci->index_block);
 		if (!bh_index)
@@ -177,7 +174,7 @@ static int ouichefs_write_begin(struct file *file,
 		brelse(bh_index);
 		brelse(bh_new_index);
 	}
-end:
+
 	/* prepare the write */
 	err = block_write_begin(mapping, pos, len, flags, pagep,
 				ouichefs_file_get_block);
@@ -198,19 +195,17 @@ static int ouichefs_write_end(struct file *file, struct address_space *mapping,
 			      loff_t pos, unsigned int len, unsigned int copied,
 			      struct page *page, void *fsdata)
 {
-	pr_info("[%s]\n", __func__);
-	int ret, i, cmp;
+	int ret, i;
 	struct inode *inode = file->f_inode;
 	struct ouichefs_inode_info *ci = OUICHEFS_INODE(inode);
 	struct super_block *sb = inode->i_sb;
 	struct ouichefs_sb_info *sbi = OUICHEFS_SB(sb);
-	struct buffer_head *bh_index, *bh_old_index, *bh_prev_index;
-	struct buffer_head *bh_new_data_block, *bh_old_data_block;
-	uint32_t old_index_no, new_block_no, old_block_no;
-	uint32_t tmp, index_block, prev_index_block, cur_no, prev_no;
-	struct ouichefs_file_index_block *index, *old_index, *prev_index;
+	struct buffer_head *bh_index, *bh_prev_index;
+	uint32_t index_block, prev_index_block, cur_no, prev_no;
+	struct ouichefs_file_index_block *index, *prev_index;
+	int64_t write_pos = (int64_t) file->private_data;
 
-	if (file->private_data != -1 && file->private_data < pos) {
+	if (write_pos != -1 && write_pos < pos) {
 		index_block = ci->last_index_block;
 	
 		bh_index = sb_bread(sb, index_block);
@@ -224,7 +219,7 @@ static int ouichefs_write_end(struct file *file, struct address_space *mapping,
 		if (!bh_prev_index) 
 			return -EIO;
 		prev_index = (struct ouichefs_file_index_block *)bh_prev_index->b_data;
-		for(i = 0; (i + 1) * OUICHEFS_BLOCK_SIZE < file->private_data; i++) {
+		for(i = 0; (i + 1) * OUICHEFS_BLOCK_SIZE < write_pos; i++) {
 			cur_no = index->blocks[i];
 			prev_no = prev_index->blocks[i];
 			if((cur_no == 0) || (prev_no == 0))
@@ -371,11 +366,10 @@ long ouichefs_ioctl(struct file *file, unsigned int cmd, unsigned long argp)
 	return 0;
 }
 
-ssize_t file_write_iter(struct kiocb *a, struct iov_iter *b)
+ssize_t file_write_iter(struct kiocb *kiocb, struct iov_iter *iov)
 {
-	pr_info("[%s]\n", __func__);
-	a->ki_filp->private_data = -1;
-	return generic_file_write_iter(a, b);
+	kiocb->ki_filp->private_data = (void *) -1;
+	return generic_file_write_iter(kiocb, iov);
 }
 
 const struct address_space_operations ouichefs_aops = {
