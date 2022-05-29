@@ -1,0 +1,106 @@
+
+Ouichefs, saison 3
+Aymeric Agon-Rambosson, Julien Sopena
+2021-2022
+Introduction : ouichefs, le système de fichiers le plus classe du monde
+ouichefs est un système de fichiers simple pour linux implémenté par Redha Gouicem dont on pourra
+trouver l’implémentation à l’adresse suivante : https://github.com/rgouicem/ouichefs.
+Le but du projet est de proposer dans ouichefs un système de versionnage des fichiers simplifié qui
+permette à l’utilisateur de garder plusieurs versions d’un même fichier, de lire une version passée du
+fichier, de restaurer cette version passée, etc. . .
+Le système de versionnage qui vous est demandé est simplifié :
+• On ne demande que de versionner les fichiers réguliers, pas les répertoires, ni les liens symboliques
+(qui ne sont pas supportés par ouichfs de toute façon).
+• Pas de système de branchement. Contrairement à git(1), il n’est pas possible d’avoir plusieurs
+branches : le graphe qui décrit les versions est une chaîne.
+• On ne peut pas modifier une version au milieu de l’historique.
+ouichefs est livré non seulement avec le module qui implémente le système de fichiers, mais aussi
+avec un programme applicatif qui permet de formater le système de fichiers, dans le répertoire mkfs.
+Attention, si vous voulez tester une version modifiée de ouichefs, il vous faudra adapter cet utilitaire
+de formatage à votre nouvelle version du module.
+Afin de vous permettre d’avoir un minimum de fonctionnalités implémentées, ce projet est découpé en
+cinq grandes étapes, correspondant à des niveaux de difficulté croissante. Celles-ci sont à faire dans
+l’ordre.
+Étape 1 : écriture
+Pour commencer, vous allez devoir implémenter un mécanisme permettant de versionner les modifica-
+tions d’un fichier : c’est-à-dire d’avoir pour chaque écriture un nouveau ouichefs_file_index_block
+qui contiendra la liste des blocs correspondant à l’état du fichier après l’écriture.
+Pour ce faire vous devrez :
+• Modifier la structure pour permettre de les chaîner entre elles, de façon à créer un historique du
+fichier (attention, quelles que soient les modifications que vous apportez à cette structure, elle
+devra toujours tenir sur un bloc).
+• Modifiez les fonctions d’écriture définies dans ouichefs. Ainsi, chaque écriture devra allouer un
+nouveau bloc d’index, pointant vers des nouveaux blocs de données (contenant toutes les données
+du fichier après l’écriture), et chaîner ce bloc d’index au précédent, et enfin mettre à jour dans
+la structure ouichefs_inode le champ index_block vers ce nouveau bloc d’index.
+1
+En résumé, à la fin d’une écriture, on aura accès depuis l’inode à la dernière version du fichier. Un
+appel à la fonction de lecture (telle qu’elle est implémentée dans ouichefs sans aucune modification)
+retournera la dernière version du fichier. Notons d’ailleurs que dans l’ensemble de ce projet, il est
+inutile (et interdit) de modifier le code de la fonction de lecture.
+Étape 2 : utilitaire de débogage
+Dans un deuxième temps, on vous demande d’utiliser debugfs pour afficher un certain nombre d’informations
+de débogage.
+Vous devez ainsi créer pour chaque partition montée avec ouichefs un fichier dont la lecture affiche,
+pour toutes les inodes de la partition correspondant à des fichiers réguliers :
+• une colonne avec le numéro de l’inode.
+• une colonne avec le nombre de versions.
+• une colonne avec une liste des numéros de blocs d’index correspondant à l’historique du fichier
+(séparés par une virgule).
+Étape 3 : vue courante
+Jusqu’à présent, les anciennes versions du fichier ne sont pas accessibles en lecture puisque la fonction
+read lit seulement le bloc pointé par l’inode dans son champ index_block.
+On introduit donc un nouveau champ dans la structure ouichefs_inode appelé last_index_block,
+qui référencera en permanence la dernière version du fichier.
+Ceci va permettre de modifier la version courante (pointée par index_block et utilisée par l’opération
+de lecture) sans pour autant perdre la dernière version du fichier.
+Implémentez maintenant à l’aide d’un ioctl la requête suivante, qui remplace pour le fichier ciblé la
+version courante par celle passée en paramètre. L’identification de cette version se fait de manière
+absolue par rapport à la dernière version du fichier (soit 0 pour la dernière version, 1 pour l’avant-
+dernière, etc. . . ). Cette requête portera le numéro 0.
+L’implémentation de cette fonctionnalité pose néanmoins le problème de la création de branche possible
+sur l’historique. Modifiez les fonctions d’écriture de ouichefs pour vous assurer qu’il n’est pas possible
+d’écrire si la version courante n’est pas la dernière version du fichier.
+Étape 4 : restauration
+Dans l’état, votre système de fichier devrait offrir un système de version en lecture des fichiers.
+On veut maintenant pouvoir utiliser l’historique pour repartir d’une version passée.
+Proposez une nouvelle requête ioctl (numérotée 1) qui permette de restaurer la version courante
+comme la dernière version du fichier, en supprimant toutes les versions postérieures, ainsi que leurs
+blocs de données. Vous veillerez à bien rendre à nouveau utilisables les blocs ainsi libérés.
+2
+Étape 5 : déduplication
+Dans l’implémentation actuelle, on duplique tous les blocs du fichier à chaque modification, y compris
+lorsque ceux-ci ne sont pas modifiés. On a donc potentiellement des blocs redondants.
+Modifiez l’implémentation des fonctions d’écriture pour ajouter un mécanisme de déduplication des
+blocs de données de l’historique. Attention : la déduplication ne concerne ici que les blocs non modifiés
+entre deux versions consécutives d’un même fichier. Il n’y a pas de déduplication pour deux fichiers
+identique, ni pour deux blocs de données identiques sur des versions qui ne sont pas immédiatement
+consécutives.
+On ne peut plus comme auparavant se permettre de libérer tous les blocs de données pointés par
+les blocs d’index supprimés, puisque ceux-ci pourraient être pointés par une version précédente. Une
+solution pourrait être d’intégrer un compteur de références au bloc de données, mais cela nécessiterait
+de modifier la structure interne d’un bloc et donc les fonctions internes du VFS.
+Pour résoudre ce dernier problème on vous propose les solutions suivantes (dont la difficulté est incré-
+mentale) :
+• une solution synchrone : lors de la suppression des blocs, on utilisera un parcours de l’ensemble
+de l’historique du fichier pour vérifier si tel ou tel bloc peut être libéré.
+• une solution asynchrone : un fil d’exécution noyau parcourt le système de fichiers en retenant
+l’ensemble des blocs référencés. Un bloc non libre et qui n’aurait pas été retenu est libéré. Cette
+solution s’apparente à un ramasse-miette marquant et nettoyant ("mark-and-sweep").
+Notez que les contraintes que nous avons fixé ici sur l’utilisation du système de fichier simplifient son
+implémentation, notamment en terme d’accès concurrent.
+Remarques générales
+On rappelle une nouvelle fois que chaque étape dépend de la précédente et que la solution asynchrone
+de l’étape 5 est plus difficile et facultative.
+Vous rendrez votre travail sous la forme d’une archive contenant :
+• dans un répertoire src, vos sources propres avec un Makefile fonctionnel. Vos sources re-
+specteront à la lettre le style du noyau.
+• dans un fichier README dont un patron vous est fourni, préciser pour chaque étape si la fonction-
+nalité a été implémentée, si elle est fonctionnelle, et le cas échéant les erreurs que vous rencontrez.
+• dans un répertoire test, un ensemble de scripts permettant de tester vos fonctionnalités. Vous
+préciserez pour chacun d’entre eux le prédicat qu’il se propose de tester, et si le test est concluant.
+Le projet doit être rendu avant le lundi 30 mai 8 heures du matin. L’après-midi de cette même journée
+sera consacré à une séance de soutenance pendant laquelle chaque groupe présentera son travail et
+fournira une démonstration rapide des fonctionnalités de son implémentation. La notation se fera sur
+la soutenance et le rendu.
+3
