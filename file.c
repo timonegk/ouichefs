@@ -61,7 +61,7 @@ static int ouichefs_file_get_block(struct inode *inode, sector_t iblock,
 		bno = index->blocks[iblock];
 	}
 
-	/* Map the physical block to to the given buffer_head */
+	/* Map the physical block to the given buffer_head */
 	map_bh(bh_result, sb, bno);
 
 brelse_index:
@@ -121,12 +121,12 @@ static int ouichefs_write_begin(struct file *file,
 	if (nr_allocs > sbi->nr_free_blocks)
 		return -ENOSPC;
 
-	if (ci->index_block != ci->last_index_block) { 
-	 	pr_err("Unable to write to old version!\n");
+	if (ci->index_block != ci->last_index_block) {
+		pr_err("Unable to write to old version!\n");
 		return -EINVAL;
-	}	
+	}
 
-	if ((long long int) file->private_data == -1) {
+	if ((long long) file->private_data == -1) {
 		file->private_data = (void *) pos;
 		/* Duplicate index block and data */
 		bh_index = sb_bread(sb, ci->index_block);
@@ -207,7 +207,7 @@ static int ouichefs_write_end(struct file *file, struct address_space *mapping,
 
 	if (write_pos != -1 && write_pos < pos) {
 		index_block = ci->last_index_block;
-	
+
 		bh_index = sb_bread(sb, index_block);
 		if (!bh_index)
 			return -EIO;
@@ -216,15 +216,15 @@ static int ouichefs_write_end(struct file *file, struct address_space *mapping,
 		prev_index_block = index->previous_block_number;
 
 		bh_prev_index = sb_bread(sb, prev_index_block);
-		if (!bh_prev_index) 
+		if (!bh_prev_index)
 			return -EIO;
 		prev_index = (struct ouichefs_file_index_block *)bh_prev_index->b_data;
-		for(i = 0; (i + 1) * OUICHEFS_BLOCK_SIZE < write_pos; i++) {
+		for (i = 0; (i + 1) * OUICHEFS_BLOCK_SIZE < write_pos; i++) {
 			cur_no = index->blocks[i];
 			prev_no = prev_index->blocks[i];
-			if((cur_no == 0) || (prev_no == 0))
+			if ((cur_no == 0) || (prev_no == 0))
 				continue;
-			if(cur_no == prev_no)
+			if (cur_no == prev_no)
 				continue;
 
 			pr_info("Delete block %x\n", cur_no);
@@ -333,7 +333,7 @@ int ouichefs_restore_file_version(struct file *file)
 				return -EIO;
 			prev_index = (struct ouichefs_file_index_block *)bh_prev_index->b_data;
 		}
-		
+
 		for (i = 0; i < sizeof(index->blocks) / sizeof(uint32_t); i++) {
 			if (index->blocks[i] == 0)
 				continue;
@@ -344,10 +344,9 @@ int ouichefs_restore_file_version(struct file *file)
 		put_block(sbi, current_version_block);
 		current_version_block = index->previous_block_number;
 		brelse(bh_index);
-		
-		if (prev_version_block != 0) {
+
+		if (prev_version_block != 0)
 			brelse(bh_prev_index);
-		}
 	}
 	info->last_index_block = info->index_block;
 	return 0;
