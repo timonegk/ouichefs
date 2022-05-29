@@ -159,11 +159,9 @@ static int ouichefs_write_begin(struct file *file,
 			sync_dirty_buffer(bh_new_data_block);
 			brelse(bh_new_data_block);
 			brelse(bh_data_block);
-			//file->private_data = bh_new_data_block;
 			new_index->blocks[i] = new_block_no;
 		}
 
-		new_index->own_block_number = new_index_no;
 		new_index->previous_block_number = ci->index_block;
 		ci->index_block = new_index_no;
 		ci->last_index_block = new_index_no;

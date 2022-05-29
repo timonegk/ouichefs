@@ -276,7 +276,6 @@ static int ouichefs_create(struct inode *dir, struct dentry *dentry,
 		memset(index, 0, OUICHEFS_BLOCK_SIZE);
 
 		index->previous_block_number = 0;
-		index->own_block_number = ino;
 	}
 
 	mark_buffer_dirty(bh2);

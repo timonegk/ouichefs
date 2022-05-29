@@ -83,7 +83,6 @@ struct ouichefs_sb_info {
 };
 
 struct ouichefs_file_index_block {
-	uint32_t own_block_number;
 	uint32_t previous_block_number;
 	uint32_t blocks[(OUICHEFS_BLOCK_SIZE >> 2) - 2];
 };
