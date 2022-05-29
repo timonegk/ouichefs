@@ -122,57 +122,62 @@ static int ouichefs_write_begin(struct file *file,
 	if (nr_allocs > sbi->nr_free_blocks)
 		return -ENOSPC;
 
-	if (ci->index_block != ci->last_index_block) {
-		pr_err("Unable to write to old version!\n");
+	if (ci->index_block != ci->last_index_block) { 
+	 	pr_err("Unable to write to old version!\n");
 		return -EINVAL;
-	}
+	}	
 
-	/* Duplicate index block and data */
-	bh_index = sb_bread(sb, ci->index_block);
-	if (!bh_index)
-		return -EIO;
-	index = (struct ouichefs_file_index_block *)bh_index->b_data;
 
-	new_index_no = get_free_block(sbi);
-	if (!new_index_no)
-		return -ENOSPC;
+	pr_info("index %lu, alloc %d\n",(*pagep)->index, nr_allocs);
+	if (file->private_data == -1) {
+		file->private_data = pos;
+		/* Duplicate index block and data */
+		bh_index = sb_bread(sb, ci->index_block);
+		if (!bh_index)
+			return -EIO;
+		index = (struct ouichefs_file_index_block *)bh_index->b_data;
 
-	bh_new_index = sb_bread(sb, new_index_no);
-	new_index = (struct ouichefs_file_index_block *)bh_new_index->b_data;
-	memset(new_index, 0, sizeof(*new_index));
-
-	for (i = 0; i < sizeof(index->blocks) / sizeof(uint32_t); i++) {
-		if (index->blocks[i] == 0)
-			continue;
-
-		new_block_no = get_free_block(sbi);
-		if (!new_block_no)
+		new_index_no = get_free_block(sbi);
+		if (!new_index_no)
 			return -ENOSPC;
-		pr_info("Duplicating block %x to %x\n", index->blocks[i], new_block_no);
 
-		bh_new_data_block = sb_bread(sb, new_block_no);
-		bh_data_block = sb_bread(sb, index->blocks[i]);
-		memcpy(bh_new_data_block->b_data, bh_data_block->b_data,
-				OUICHEFS_BLOCK_SIZE);
-		mark_buffer_dirty(bh_new_data_block);
-		sync_dirty_buffer(bh_new_data_block);
-		//brelse(bh_new_data_block);
-		brelse(bh_data_block);
-		file->private_data = bh_new_data_block;
-		new_index->blocks[i] = new_block_no;
+		bh_new_index = sb_bread(sb, new_index_no);
+		new_index = (struct ouichefs_file_index_block *)bh_new_index->b_data;
+		memset(new_index, 0, sizeof(*new_index));
+
+		for (i = 0; i < sizeof(index->blocks) / sizeof(uint32_t); i++) {
+			if (index->blocks[i] == 0)
+				continue;
+
+			new_block_no = get_free_block(sbi);
+			if (!new_block_no)
+				return -ENOSPC;
+			pr_info("Duplicating block %x to %x\n", index->blocks[i], new_block_no);
+
+			bh_new_data_block = sb_bread(sb, new_block_no);
+			bh_data_block = sb_bread(sb, index->blocks[i]);
+			memcpy(bh_new_data_block->b_data, bh_data_block->b_data,
+					OUICHEFS_BLOCK_SIZE);
+			mark_buffer_dirty(bh_new_data_block);
+			sync_dirty_buffer(bh_new_data_block);
+			brelse(bh_new_data_block);
+			brelse(bh_data_block);
+			//file->private_data = bh_new_data_block;
+			new_index->blocks[i] = new_block_no;
+		}
+
+		new_index->own_block_number = new_index_no;
+		new_index->previous_block_number = ci->index_block;
+		ci->index_block = new_index_no;
+		ci->last_index_block = new_index_no;
+		mark_buffer_dirty(bh_new_index);
+		mark_buffer_dirty(bh_index);
+		sync_dirty_buffer(bh_new_index);
+		sync_dirty_buffer(bh_index);
+		brelse(bh_index);
+		brelse(bh_new_index);
 	}
-
-	new_index->own_block_number = new_index_no;
-	new_index->previous_block_number = ci->index_block;
-	ci->index_block = new_index_no;
-	ci->last_index_block = new_index_no;
-	mark_buffer_dirty(bh_new_index);
-	mark_buffer_dirty(bh_index);
-	sync_dirty_buffer(bh_new_index);
-	sync_dirty_buffer(bh_index);
-	brelse(bh_index);
-	brelse(bh_new_index);
-
+end:
 	/* prepare the write */
 	err = block_write_begin(mapping, pos, len, flags, pagep,
 				ouichefs_file_get_block);
@@ -199,10 +204,43 @@ static int ouichefs_write_end(struct file *file, struct address_space *mapping,
 	struct ouichefs_inode_info *ci = OUICHEFS_INODE(inode);
 	struct super_block *sb = inode->i_sb;
 	struct ouichefs_sb_info *sbi = OUICHEFS_SB(sb);
-	struct buffer_head *bh_index, *bh_old_index;
+	struct buffer_head *bh_index, *bh_old_index, *bh_prev_index;
 	struct buffer_head *bh_new_data_block, *bh_old_data_block;
 	uint32_t old_index_no, new_block_no, old_block_no;
-	struct ouichefs_file_index_block *index, *old_index;
+	uint32_t tmp, index_block, prev_index_block, cur_no, prev_no;
+	struct ouichefs_file_index_block *index, *old_index, *prev_index;
+
+	if (file->private_data != -1 && file->private_data < pos) {
+		index_block = ci->last_index_block;
+	
+		bh_index = sb_bread(sb, index_block);
+		if (!bh_index)
+			return -EIO;
+
+		index = (struct ouichefs_file_index_block *)bh_index->b_data;
+		prev_index_block = index->previous_block_number;
+
+		bh_prev_index = sb_bread(sb, prev_index_block);
+		if (!bh_prev_index) 
+			return -EIO;
+		prev_index = (struct ouichefs_file_index_block *)bh_prev_index->b_data;
+		for(i = 0; (i + 1) * OUICHEFS_BLOCK_SIZE < file->private_data; i++) {
+			cur_no = index->blocks[i];
+			prev_no = prev_index->blocks[i];
+			if((cur_no == 0) || (prev_no == 0))
+				continue;
+			if(cur_no == prev_no)
+				continue;
+
+			pr_info("Delete block %x\n", cur_no);
+			index->blocks[i] = prev_no;
+			put_block(sbi, cur_no);
+			mark_buffer_dirty(bh_index);
+			sync_dirty_buffer(bh_index);
+		}
+		brelse(bh_prev_index);
+		brelse(bh_index);
+	}
 
 	/* Complete the write() */
 	ret = generic_write_end(file, mapping, pos, len, copied, page, fsdata);
@@ -249,62 +287,6 @@ static int ouichefs_write_end(struct file *file, struct address_space *mapping,
 		}
 	}
 
-	/*void *content = kmap_atomic(page);
-	pr_info("Content: %s", (char *)content);
-	kunmap_atomic(content);
-	pr_info("pos: %lld\n", pos);
-
-	/*struct page *entry;
-	unsigned long index_xa;
-	xa_for_each(&inode->i_mapping->i_pages, index_xa, entry) {
-		pr_info("Index is %lu, %lu\n", index_xa, entry->index);
-		void *mapping = kmap_atomic(entry);
-		pr_info("Void * content: %c\n", ((char *)mapping)[0]);
-		kunmap_atomic(mapping);
-	}*/
-
-	/* Check which blocks changed */
-
-	bh_index = sb_bread(sb, ci->index_block);
-	if (!bh_index)
-		return -EIO;
-	index = (struct ouichefs_file_index_block *)bh_index->b_data;
-	old_index_no = index->previous_block_number;
-	pr_info("Old block number: %x\n", old_index_no);
-	if (!old_index_no)
-		return -ENOSPC;
-	bh_old_index = sb_bread(sb, old_index_no);
-	old_index = (struct ouichefs_file_index_block *)bh_old_index->b_data;
-
-	i = pos / OUICHEFS_BLOCK_SIZE;
-
-	new_block_no = index->blocks[i];
-	old_block_no = old_index->blocks[i];
-
-	if (old_block_no == 0)
-		/* one of the blocks is empty, no deduplication possible */
-		goto end;
-
-	bh_old_data_block = sb_bread(sb, old_block_no);
-	void *new_content = kmap_atomic(page);
-	cmp = memcmp(new_content, bh_old_data_block->b_data,
-			OUICHEFS_BLOCK_SIZE);
-	pr_info("First: %c, Second: %c\n", bh_old_data_block->b_data[0], ((char *)new_content)[0]);
-	kunmap_atomic(new_content);
-	if (cmp == 0) {
-		pr_info("Blocks are the same, delete %x, keep %x\n", new_block_no, old_block_no);
-		/* the blocks are the same -> deduplication */
-		index->blocks[i] = old_block_no;
-		put_block(sbi, new_block_no);
-		mark_buffer_dirty(bh_index);
-	}
-	//brelse(bh_new_data_block);
-	brelse(bh_old_data_block);
-
-	sync_dirty_buffer(bh_index);
-	brelse(bh_index);
-	brelse(bh_old_index);
-
 end:
 	return ret;
 }
@@ -322,8 +304,6 @@ int ouichefs_change_file_version(struct file *file, int version)
 		index_block = (struct ouichefs_file_index_block *)bh->b_data;
 		current_version_block = index_block->previous_block_number;
 		version--;
-		if (current_version_block == 0)
-			return -EINVAL;
 	}
 	info->index_block = current_version_block;
 
@@ -378,6 +358,7 @@ long ouichefs_ioctl(struct file *file, unsigned int cmd, unsigned long argp)
 ssize_t file_write_iter(struct kiocb *a, struct iov_iter *b)
 {
 	pr_info("[%s]\n", __func__);
+	a->ki_filp->private_data = -1;
 	return generic_file_write_iter(a, b);
 }
 
