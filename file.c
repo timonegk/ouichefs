@@ -139,7 +139,8 @@ static int ouichefs_write_begin(struct file *file,
 			return -ENOSPC;
 
 		bh_new_index = sb_bread(sb, new_index_no);
-		new_index = (struct ouichefs_file_index_block *)bh_new_index->b_data;
+		new_index = (struct ouichefs_file_index_block *)
+				bh_new_index->b_data;
 		memset(new_index, 0, sizeof(*new_index));
 
 		for (i = 0; i < sizeof(index->blocks) / sizeof(uint32_t); i++) {
@@ -149,7 +150,8 @@ static int ouichefs_write_begin(struct file *file,
 			new_block_no = get_free_block(sbi);
 			if (!new_block_no)
 				return -ENOSPC;
-			pr_info("Duplicating block %x to %x\n", index->blocks[i], new_block_no);
+			pr_info("Duplicating block %x to %x\n",
+				index->blocks[i], new_block_no);
 
 			bh_new_data_block = sb_bread(sb, new_block_no);
 			bh_data_block = sb_bread(sb, index->blocks[i]);
@@ -216,7 +218,8 @@ static int ouichefs_write_end(struct file *file, struct address_space *mapping,
 		bh_prev_index = sb_bread(sb, prev_index_block);
 		if (!bh_prev_index)
 			return -EIO;
-		prev_index = (struct ouichefs_file_index_block *)bh_prev_index->b_data;
+		prev_index = (struct ouichefs_file_index_block *)
+				bh_prev_index->b_data;
 		for (i = 0; (i + 1) * OUICHEFS_BLOCK_SIZE < write_pos; i++) {
 			cur_no = index->blocks[i];
 			prev_no = prev_index->blocks[i];
@@ -301,7 +304,6 @@ int ouichefs_change_file_version(struct file *file, int version)
 	info->index_block = current_version_block;
 
 	mark_inode_dirty(file->f_inode);
-//	invalidate_inode_buffers(file->f_inode);
 	invalidate_mapping_pages(file->f_inode->i_mapping, 0, -1);
 	return 0;
 }
@@ -329,13 +331,15 @@ int ouichefs_restore_file_version(struct file *file)
 			bh_prev_index = sb_bread(sb, prev_version_block);
 			if (!bh_prev_index)
 				return -EIO;
-			prev_index = (struct ouichefs_file_index_block *)bh_prev_index->b_data;
+			prev_index = (struct ouichefs_file_index_block *)
+					bh_prev_index->b_data;
 		}
 
 		for (i = 0; i < sizeof(index->blocks) / sizeof(uint32_t); i++) {
 			if (index->blocks[i] == 0)
 				continue;
-			if (prev_version_block != 0 && index->blocks[i] == prev_index->blocks[i])
+			if (prev_version_block != 0 &&
+				index->blocks[i] == prev_index->blocks[i])
 				continue;
 			put_block(sbi, index->blocks[i]);
 		}

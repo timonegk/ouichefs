@@ -378,7 +378,10 @@ static int ouichefs_unlink(struct inode *dir, struct dentry *dentry)
 		file_block = (struct ouichefs_file_index_block *)bh->b_data;
 		if (S_ISDIR(inode->i_mode))
 			goto scrub;
-		for (i = 0; i < sizeof(file_block->blocks) / sizeof(uint32_t); i++) {
+		for (
+			i = 0;
+			i < sizeof(file_block->blocks) / sizeof(uint32_t);
+			i++) {
 			char *block;
 
 			if (!file_block->blocks[i])
