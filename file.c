@@ -205,7 +205,7 @@ static int ouichefs_write_end(struct file *file, struct address_space *mapping,
 	struct ouichefs_file_index_block *index, *prev_index;
 	int64_t write_pos = (int64_t) file->private_data;
 
-	if (write_pos != -1 && write_pos < pos) {
+	if (write_pos == pos) {
 		index_block = ci->last_index_block;
 
 		bh_index = sb_bread(sb, index_block);
