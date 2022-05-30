@@ -1,18 +1,20 @@
 #!/bin/bash
 
-echo 1 > /mnt/test5
-echo 2 > /mnt/test5
-cat /mnt/test5  # 2
+. /share/tests/color.sh
 
-/share/client version /mnt/test5 1
-cat /mnt/test5  # 1
+cr "echo 1 > /mnt/test5"
+cr "echo 2 > /mnt/test5"
+cr "cat /mnt/test5"
 
-cat /sys/kernel/debug/loop0
+cr "/share/client version /mnt/test5 1"
+cr "cat /mnt/test5"
 
-/share/client reset /mnt/test5
-cat /mnt/test5  # 1
+cr "cat /sys/kernel/debug/loop0"
 
-cat /sys/kernel/debug/loop0
+cr "/share/client reset /mnt/test5"
+cr "cat /mnt/test5"
+
+cr "cat /sys/kernel/debug/loop0"
 
 # On peut écrire
-echo 3 > /mnt/test5
+cr "echo 3 > /mnt/test5"

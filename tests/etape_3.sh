@@ -1,18 +1,22 @@
 #!/bin/bash
 
-echo 1 > /mnt/test4
-echo 2 > /mnt/test4
-cat /mnt/test4  # 2
+. /share/tests/color.sh
 
-/share/client version /mnt/test4 1
-cat /mnt/test4  # 1
+cr "echo 1 > /mnt/test4"
 
-/share/client version /mnt/test4 0
-cat /mnt/test4  # 2
+cr "echo 2 > /mnt/test4"
 
-/share/client version /mnt/test4 1
-echo 3 > /mnt/test4  # ERR
+cr "cat /mnt/test4"
+
+cr "/share/client version /mnt/test4 1"
+cr "cat /mnt/test4"
+
+cr "/share/client version /mnt/test4 0"
+cr "cat /mnt/test4"
+
+cr "/share/client version /mnt/test4 1"
+cr "echo 3 > /mnt/test4"
 
 
-/share/client version /mnt/test4 0
-rm /mnt/test4
+cr "/share/client version /mnt/test4 0"
+cr "rm /mnt/test4"

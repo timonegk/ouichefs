@@ -1,4 +1,6 @@
 #!/bin/bash
 
-insmod /share/ouichefs.ko
-mount test.img /mnt
+. /share/tests/color.sh
+
+cr "insmod /share/ouichefs.ko"
+cr "mount test.img /mnt"
